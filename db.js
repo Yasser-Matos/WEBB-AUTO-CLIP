@@ -3,7 +3,15 @@
 // OJO: aquí NUNCA se guardan videos, solo datos de las cuentas.
 // =====================================================================
 const Database = require('better-sqlite3');
+const fs = require('fs');
+const path = require('path');
 const C = require('./config');
+
+// Asegurar que el directorio de la base de datos exista antes de abrirla
+const dbDir = path.dirname(C.DB_PATH);
+if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+}
 
 const db = new Database(C.DB_PATH);
 db.pragma('journal_mode = WAL');
