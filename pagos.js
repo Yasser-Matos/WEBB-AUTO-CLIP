@@ -79,7 +79,7 @@ async function stripeCrearSesion(pago, plan, base) {
 }
 
 // ---------- PAYPAL ----------
-const paypalApi = () => env.PAYPAL_MODO === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
+const paypalApi = () => env.PAYPAL_MODE === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
 
 async function paypalToken() {
   const r = await fetch(`${paypalApi()}/v1/oauth2/token`, {
