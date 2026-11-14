@@ -18,10 +18,13 @@ function ejecutar(cmd, args, opciones = {}) {
     p.stdout.on('data', d => { if (out.length < 20e6) out += d; });
     p.stderr.on('data', d => { err += d; if (err.length > 5000) err = err.slice(-5000); });
     p.on('error', e => { if (reloj) clearTimeout(reloj); reject(new Error(`No se pudo ejecutar ${cmd}: ${e.message}`)); });
-    p.on('close', code => {
+    p.on('close', (code, senal) => {
       if (reloj) clearTimeout(reloj);
       if (vencido) return reject(new Error(`${cmd} tardó demasiado y se canceló`));
-      code === 0 ? resolve(out) : reject(new Error(err || `${cmd} terminó con código ${code}`));
+      if (code === 0) return resolve(out);
+      // code null + señal = el sistema mató el programa (casi siempre por falta de memoria)
+      if (code === null) return reject(new Error(`${cmd} fue detenido por el servidor (${senal || 'sin señal'}), probablemente por falta de memoria. Prueba con menos clips o un video más corto.`));
+      reject(new Error(err || `${cmd} terminó con código ${code}`));
     });
   });
 }

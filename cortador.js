@@ -96,6 +96,8 @@ function construirArgs({ origen, inicio, dur, salida, formato, dims, logo }) {
   }
   args.push('-map', '0:a:0?',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    // Menos memoria: pocos hilos y poca "mirada hacia adelante" (el servidor es pequeño)
+    '-threads', '2', '-x264-params', 'rc-lookahead=10:sync-lookahead=0:ref=2',
     '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', salida);
   return args;
 }
