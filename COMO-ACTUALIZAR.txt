@@ -1,0 +1,8 @@
+COMO ACTUALIZAR (copiar encima de tu proyecto actual)
+1. Copia db.js y panel.js a la carpeta del proyecto (reemplaza los actuales).
+2. Copia admin.html, admin.css y admin.js a la carpeta public/.
+3. Abre public/sw.js y busca la linea donde el service worker decide que no guardar en cache
+   las rutas /api. Agrega ahi tambien: url.pathname.startsWith('/admin')
+   (si no, el panel podria mostrarse con una version vieja guardada).
+4. Reemplaza LEEME.md si quieres la guia nueva.
+5. Sube a GitHub y Railway redespliega. Entra a /admin con tu ADMIN_KEY.

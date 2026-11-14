@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Panel de VideoClips</title>
+<meta name="theme-color" content="#251d38">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+
+<div id="toast" class="toast oculto" role="status" aria-live="polite"></div>
+
+<!-- ================= ENTRADA ================= -->
+<main id="vistaLogin" class="login oculto">
+  <form id="formLogin" class="login-tarjeta">
+    <div class="marca"><span class="marca-icono" aria-hidden="true">✂</span><span class="marca-nombre">VideoClips</span></div>
+    <h1>Panel de administración</h1>
+    <p class="suave">Escribe tu clave para ver tus ventas, tus usuarios y cambiar tus precios.</p>
+    <label for="claveAdmin">Clave de administrador</label>
+    <input type="password" id="claveAdmin" autocomplete="current-password" required autofocus>
+    <button type="submit" class="btn grande" id="btnLogin">Entrar al panel</button>
+    <p id="errLogin" class="error" role="alert"></p>
+    <small>Es la variable ADMIN_KEY que pusiste en Railway.</small>
+  </form>
+</main>
+
+<!-- ================= PANEL ================= -->
+<div id="vistaPanel" class="panel oculto">
+  <aside class="lateral">
+    <div class="marca"><span class="marca-icono" aria-hidden="true">✂</span><span class="marca-nombre">VideoClips</span></div>
+    <nav class="menu" aria-label="Secciones del panel" id="menu"></nav>
+    <div class="lateral-pie">
+      <a class="enlace-lateral" href="/" target="_blank" rel="noopener">Ver la web de clientes</a>
+      <button type="button" class="enlace-lateral" id="btnTema">Cambiar tema</button>
+      <button type="button" class="enlace-lateral" id="btnSalir">Salir del panel</button>
+    </div>
+  </aside>
+
+  <main class="contenido" id="contenido">
+    <header class="cabecera">
+      <div>
+        <h1 id="tituloPag" tabindex="-1"></h1>
+        <p id="subPag" class="suave"></p>
+      </div>
+      <div id="accionesPag" class="acciones-pag"></div>
+    </header>
+    <div id="pagina"></div>
+  </main>
+</div>
+
+<dialog id="dlgFicha" class="ficha" aria-labelledby="fichaTitulo"></dialog>
+<dialog id="dlgNuevo" class="modal" aria-labelledby="nuevoTitulo"></dialog>
+<dialog id="dlgConfirmar" class="modal pequeno" aria-labelledby="confTitulo"></dialog>
+
+<script src="/admin.js"></script>
+</body>
+</html>

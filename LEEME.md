@@ -14,12 +14,26 @@ Los videos **no se guardan**: el original se borra al terminar y los clips a los
 | `cola.js` | Fila de espera si hay muchos videos | No |
 | `pagos.js` | Cobro con Stripe y PayPal | No |
 | `redes.js` | Publicar en YouTube, TikTok, Instagram | No |
-| `db.js` | Base de datos de usuarios | No |
+| `db.js` | Base de datos de usuarios, pagos y ajustes | No |
+| `panel.js` | Servidor del panel de administración | No |
 | `zip.js` | Descargar todos los clips juntos | No |
 | `public/` | Lo que ve el usuario (`index.html`, `estilos.css`, `app.js`, iconos) | Colores en `estilos.css` |
+| `public/admin.html/.css/.js` | Pantalla del panel de administración | Colores en `admin.css` (arriba) |
 
 ## Cambiar precios y planes
 Abre `config.js`. En `PLANES` cambia `precioUSD`, `videosPorMes`, `maxClips`, `maxDuracion`, `logo` (true/false) y `publicar` (true/false). Cada pago da `DIAS_POR_COMPRA` días (30).
+
+## Panel de administración (`/admin`)
+Entra a `https://TU-DIRECCION/admin` y escribe tu `ADMIN_KEY`. Tiene cinco pantallas:
+
+- **Inicio:** cuánta gente usó la web este mes, cuántos tienen cada plan, **"La caja"** (dinero cobrado este mes, últimas ventas y total guardado hasta hoy), gráficas por mes, planes que vencen esta semana y pruebas por terminar.
+- **Usuarios:** busca por correo y filtra por estado o plan. Al tocar a alguien se abre su ficha: dar más días o fijar la fecha de vencimiento, cambiar plan, cambiar correo o contraseña, reiniciar su conteo de videos, bloquear o eliminar. También **anotar un cobro** en efectivo o transferencia (se suma a las ventas y renueva el acceso) y **crear usuarios nuevos**.
+- **Ventas:** cada compra con fecha, cliente, plan, cómo pagó y monto; total del mes, mes pasado, total acumulado y venta promedio; botón para descargar a Excel. Una compra "Sin terminar" no cuenta como dinero cobrado.
+- **Planes y precios:** cambia nombre, precio y límites de cada plan y de la prueba gratis sin tocar el código (se guarda en la base de datos). Un cambio de precio solo afecta compras nuevas.
+- **Estado del sistema:** revisa si falta alguna variable (Stripe, PayPal, URL, etc.).
+
+## Prueba gratis
+Quien se registra desde la pestaña "Prueba gratis" recibe `PRUEBA.dias` días y los límites del plan `prueba` (3 videos en total, 5 clips, 30 s, sin logo ni publicar). Solo se puede usar **una vez por correo** (se ignoran los puntos de Gmail y los +alias) y máximo 2 por día desde la misma conexión. Puedes apagarla o cambiarla desde **Planes y precios**. Los días de prueba no se suman al comprar un plan. Aún no se verifica el correo con un enlace.
 
 ## Subir a Railway (paso a paso)
 
@@ -30,7 +44,7 @@ Abre `config.js`. En `PLANES` cambia `precioUSD`, `videosPorMes`, `maxClips`, `m
 | Variable | Valor |
 |---|---|
 | `JWT_SECRET` | Una clave larga inventada por ti (obligatoria) |
-| `ADMIN_KEY` | Tu clave secreta para crear usuarios a mano |
+| `ADMIN_KEY` | Tu clave del panel `/admin` (larga y secreta) |
 | `NODE_ENV` | `production` |
 | `URL_PUBLICA` | Tu dirección, ej. `https://tuapp.up.railway.app` |
 
@@ -51,11 +65,7 @@ Abre `config.js`. En `PLANES` cambia `precioUSD`, `videosPorMes`, `maxClips`, `m
 Si no pones ninguna, la pestaña "Comprar acceso" avisa que las compras no están activadas (y puedes crear usuarios a mano, ver abajo).
 
 ## Crear un usuario a mano (regalo o venta directa)
-En PowerShell:
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "https://TU-DIRECCION/api/admin/usuario" -ContentType "application/json" -Body '{"clave":"TU_ADMIN_KEY","email":"cliente@correo.com","password":"clave123","dias":30,"plan":"pro"}'
-```
+Lo más fácil: panel → **Usuarios → Nuevo usuario**. Genera la contraseña y te da un mensaje listo para copiar y enviar al cliente. Si pones cuánto pagó, se anota en Ventas.
 
 ## Publicar directo en redes (plan Pro)
 Cada red exige que crees una "app" de desarrollador y que la aprueben antes de publicar para el público. Sin aprobación funciona solo para tu propia cuenta de prueba. La dirección de retorno (redirect URI) de cada una es `https://TU-DIRECCION/api/redes/NOMBRE/callback`.
@@ -69,9 +79,11 @@ Cada red exige que crees una "app" de desarrollador y que la aprueben antes de p
 Solo aparecen en la web las redes cuyas variables pongas.
 
 ## Qué está probado y qué no
-**Probado aquí con ffmpeg y navegador reales:** cortes en los 3 formatos, logo en las 5 posiciones, "mejores momentos", partes iguales, cola de espera, ZIP, planes y límites, activación única de pagos, firma de Stripe, migración de la base anterior, y la pantalla completa (botones +/−, atajos, planes, resultados).
+**Probado con ffmpeg y navegador reales:** cortes en los 3 formatos, logo, "mejores momentos", cola, ZIP, planes y límites, activación única de pagos, firma de Stripe, prueba gratis (registro, anti-repetición y límites) y las acciones del panel (cambiar correo, fijar fecha, anotar cobro, crear con monto, resumen de ventas).
 
-**No pude probar aquí:** el servidor completo levantado con Express (no pude instalar paquetes) ni las llamadas reales a Stripe, PayPal, YouTube, TikTok e Instagram (necesitan tus claves). Al subirlo, haz primero una compra de prueba (Stripe en modo test / PayPal sandbox) y un clip de prueba antes de vender.
+**Panel (pantallas):** revisadas en navegador real a 1366 px y celular con datos de ejemplo. Después se reinició mi entorno y tuve que reconstruir `admin.css`; esa versión la vi con datos de ejemplo, pero **no** contra el servidor completo.
+
+**No pude probar:** el servidor levantado con Express real ni las llamadas reales a Stripe, PayPal, YouTube, TikTok e Instagram. Al subirlo, haz primero una compra de prueba y un clip de prueba antes de vender.
 
 ## Aviso legal
 Descargar videos por link de plataformas como YouTube puede ir contra sus términos o los derechos de autor. Conviene que tus términos de uso indiquen que el usuario solo use videos propios o con permiso.
