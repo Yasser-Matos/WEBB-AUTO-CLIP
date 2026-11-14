@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VideoClips - convierte un video largo en clips</title>
+<meta name="description" content="Convierte un video largo en varios clips listos para TikTok, Reels y Shorts.">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/estilos.css">
+</head>
+<body>
+
+<!-- Avisos (pagos, errores...) -->
+<div id="aviso" class="banner oculto" role="status" aria-live="polite"></div>
+
+<!-- ======================================================================
+     ACCESO: entrar, probar gratis o comprar
+     ====================================================================== -->
+<main id="vistaAcceso" class="caja acceso oculto">
+  <div class="marca">
+    <span class="marca-icono" aria-hidden="true">✂</span>
+    <div><h1>VideoClips</h1></div>
+  </div>
+  <p class="sub">Convierte un video largo en varios clips listos para publicar.</p>
+
+  <section class="tarjeta">
+    <div class="tabs" role="tablist">
+      <button type="button" id="tabEntrar" class="on">Entrar</button>
+      <button type="button" id="tabPrueba" class="gratis oculto">Prueba gratis</button>
+      <button type="button" id="tabComprar">Comprar acceso</button>
+    </div>
+
+    <!-- Entrar -->
+    <form id="formEntrar">
+      <label for="email">Correo</label>
+      <input type="email" id="email" autocomplete="email" required>
+      <label for="clave">Contraseña</label>
+      <input type="password" id="clave" autocomplete="current-password" required>
+      <p id="errLogin" class="msg error" role="alert"></p>
+      <button type="submit" id="btnEntrar" class="grande">Entrar</button>
+    </form>
+
+    <!-- Prueba gratis -->
+    <form id="formPrueba" class="oculto">
+      <div class="oferta">
+        <b id="tituloPrueba">Prueba gratis</b>
+        <ul id="listaPrueba"></ul>
+      </div>
+      <label for="emailPrueba">Correo</label>
+      <input type="email" id="emailPrueba" autocomplete="email" required>
+      <label for="clavePrueba">Crea una contraseña (mínimo 6 caracteres)</label>
+      <input type="password" id="clavePrueba" autocomplete="new-password" minlength="6" required>
+      <p id="errPrueba" class="msg error" role="alert"></p>
+      <button type="submit" id="btnPrueba" class="grande gratis">Empezar prueba gratis</button>
+      <small class="pie">Sin tarjeta. Una prueba por correo.</small>
+    </form>
+
+    <!-- Comprar -->
+    <div id="formComprar" class="oculto">
+      <label for="emailCompra">Correo</label>
+      <input type="email" id="emailCompra" autocomplete="email">
+      <label for="claveCompra">Contraseña (mínimo 6 caracteres)</label>
+      <input type="password" id="claveCompra" autocomplete="new-password">
+      <label>Elige tu plan</label>
+      <div id="listaPlanes" class="planes"></div>
+      <div id="metodosPago" class="metodos"></div>
+      <p id="errCompra" class="msg error" role="alert"></p>
+      <small class="pie">Si ya tienes cuenta, usa tu misma contraseña para renovar.</small>
+    </div>
+  </section>
+
+  <button type="button" id="btnVolver" class="sec oculto">← Volver a mis clips</button>
+  <div class="centro">
+    <button type="button" id="btnInstalar" class="sec peq oculto">📲 Instalar como app</button>
+  </div>
+</main>
+
+<!-- ======================================================================
+     APP: crear clips
+     ====================================================================== -->
+<main id="vistaApp" class="caja app oculto">
+  <header class="top">
+    <div class="marca">
+      <span class="marca-icono" aria-hidden="true">✂</span>
+      <h1>VideoClips</h1>
+    </div>
+    <div class="top-derecha">
+      <small id="infoUsuario"></small>
+      <button type="button" id="btnInstalar2" class="sec peq oculto">📲 Instalar</button>
+      <button type="button" id="btnSalir" class="sec peq">Salir</button>
+    </div>
+  </header>
+
+  <p id="ayudaIos" class="tarjeta oculto"><small>En iPhone: toca el botón Compartir y elige "Agregar a pantalla de inicio" para instalarla como app.</small></p>
+
+  <div class="columnas">
+    <!-- ---------- Columna izquierda: configurar ---------- -->
+    <div class="col-config">
+
+      <section class="tarjeta">
+        <h2>Tu video</h2>
+        <div class="tabs">
+          <button type="button" id="tabLink" class="on">Pegar link</button>
+          <button type="button" id="tabArchivo">Subir archivo</button>
+        </div>
+        <div id="bloqueLink">
+          <label for="link">Link del video</label>
+          <input type="url" id="link" placeholder="https://..." inputmode="url" autocomplete="off">
+        </div>
+        <div id="bloqueArchivo" class="oculto">
+          <label for="archivo">Archivo de video</label>
+          <input type="file" id="archivo" accept="video/*">
+        </div>
+        <div class="fila">
+          <div><label for="desde">Desde (opcional)</label><input type="text" id="desde" placeholder="0:00" inputmode="numeric"></div>
+          <div><label for="hasta">Hasta (opcional)</label><input type="text" id="hasta" placeholder="fin" inputmode="numeric"></div>
+        </div>
+        <small>Para usar solo una parte del video. Ejemplo: 1:30</small>
+      </section>
+
+      <section class="tarjeta">
+        <h2>Cuántos clips y de cuánto tiempo</h2>
+        <div class="fila">
+          <div class="control" id="controlCantidad">
+            <label for="cantidad">Cantidad de clips</label>
+            <div class="stepper" id="stCantidad">
+              <button type="button" data-dir="-1" aria-label="Un clip menos">−</button>
+              <input type="number" id="cantidad" min="1" max="10" value="3" inputmode="numeric">
+              <button type="button" data-dir="1" aria-label="Un clip más">+</button>
+            </div>
+            <div class="chips" id="chipsCantidad"></div>
+          </div>
+          <div class="control" id="controlDuracion">
+            <label for="duracion">Segundos por clip</label>
+            <div class="stepper" id="stDuracion">
+              <button type="button" data-dir="-1" aria-label="Menos segundos">−</button>
+              <input type="number" id="duracion" min="3" max="60" value="30" inputmode="numeric">
+              <button type="button" data-dir="1" aria-label="Más segundos">+</button>
+            </div>
+            <div class="chips" id="chipsDuracion"></div>
+            <small id="notaDuracion" class="oculto">En partes iguales la duración sale sola.</small>
+          </div>
+        </div>
+        <p class="resumen" id="resumen"></p>
+      </section>
+
+      <section class="tarjeta">
+        <h2>Cómo cortar</h2>
+        <div class="opciones">
+          <label class="opcion"><input type="radio" name="modo" value="parejo" checked><span><b>Seguidos</b><small>Un clip tras otro, repartidos por todo el video</small></span></label>
+          <label class="opcion"><input type="radio" name="modo" value="mejores"><span><b>Mejores momentos</b><small>Busca las partes con más acción y sonido</small></span></label>
+          <label class="opcion"><input type="radio" name="modo" value="iguales"><span><b>Partes iguales</b><small>Divide todo el video en partes del mismo largo</small></span></label>
+        </div>
+        <label>Formato</label>
+        <div class="segmentado">
+          <label><input type="radio" name="formato" value="original" checked><span>Original<small>Como está</small></span></label>
+          <label><input type="radio" name="formato" value="vertical"><span>Vertical<small>9:16 TikTok, Reels</small></span></label>
+          <label><input type="radio" name="formato" value="cuadrado"><span>Cuadrado<small>1:1 Instagram</small></span></label>
+        </div>
+
+        <div class="logo-bloque" id="bloqueLogo">
+          <label for="logo">Tu logo <span class="etiqueta" id="etiquetaPro">Plan Pro</span></label>
+          <input type="file" id="logo" accept="image/png,image/jpeg,image/webp">
+          <div id="opcionesLogo" class="logo-fila oculto">
+            <img id="vistaLogo" class="logo-vista" alt="Vista previa del logo">
+            <div class="pos-grid" role="radiogroup" aria-label="Posición del logo">
+              <label style="grid-area:a"><input type="radio" name="logoPos" value="tl"><span></span></label>
+              <label style="grid-area:b"><input type="radio" name="logoPos" value="tr"><span></span></label>
+              <label style="grid-area:c"><input type="radio" name="logoPos" value="centro"><span></span></label>
+              <label style="grid-area:d"><input type="radio" name="logoPos" value="bl"><span></span></label>
+              <label style="grid-area:e"><input type="radio" name="logoPos" value="br" checked><span></span></label>
+            </div>
+            <div>
+              <label for="logoTamano">Tamaño</label>
+              <select id="logoTamano"><option value="chico">Chico</option><option value="medio" selected>Medio</option><option value="grande">Grande</option></select>
+              <p><button type="button" id="btnQuitarLogo" class="sec peq" style="margin-top:8px">Quitar logo</button></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <button type="button" id="btnProcesar" class="grande">✂ Crear clips</button>
+    </div>
+
+    <!-- ---------- Columna derecha: plan, progreso y resultados ---------- -->
+    <aside class="col-lado">
+      <section class="tarjeta plan-card">
+        <div class="plan-fila">
+          <div>
+            <b id="planNombre"></b>
+            <div><small id="planDetalle"></small></div>
+          </div>
+          <button type="button" id="btnMejorar" class="sec peq">Mejorar o renovar</button>
+        </div>
+        <div class="barra fina"><div id="usoBarra"></div></div>
+      </section>
+
+      <section id="bannerPrueba" class="aviso-prueba oculto">
+        <b id="bannerTitulo"></b>
+        <p id="bannerTexto"></p>
+        <button type="button" id="btnComprarDesdePrueba" class="peq">Ver planes</button>
+      </section>
+
+      <section id="estado" class="tarjeta oculto" aria-live="polite">
+        <h2>Creando tus clips</h2>
+        <div class="barra"><div id="progreso"></div></div>
+        <p id="mensaje" class="msg"></p>
+      </section>
+
+      <section id="resultados" class="tarjeta oculto">
+        <div class="res-cabecera">
+          <h2>Tus clips</h2>
+          <a id="btnZip" class="boton sec peq oculto" href="#">⬇️ Todos en ZIP</a>
+        </div>
+        <small id="cuenta"></small>
+        <div id="listaClips" class="clips"></div>
+      </section>
+
+      <section id="tarjetaRedes" class="tarjeta oculto">
+        <h2>Publicar en redes</h2>
+        <div id="listaRedes"></div>
+        <small id="notaRedes"></small>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<!-- Publicar un clip -->
+<dialog id="dlgPublicar">
+  <form id="formPublicar" method="dialog">
+    <h2 id="tituloPublicar">Publicar clip</h2>
+    <label for="pubRed">Red social</label>
+    <select id="pubRed"></select>
+    <label for="pubTitulo">Título</label>
+    <input type="text" id="pubTitulo" maxlength="100">
+    <label for="pubDesc">Descripción</label>
+    <textarea id="pubDesc" rows="3" maxlength="1000"></textarea>
+    <div id="bloquePriv">
+      <label for="pubPriv">Quién lo ve (YouTube)</label>
+      <select id="pubPriv">
+        <option value="private">Solo yo</option>
+        <option value="unlisted">Con el enlace</option>
+        <option value="public">Todos</option>
+      </select>
+    </div>
+    <p id="pubMsg" class="msg"></p>
+    <div class="fila botones-dlg">
+      <button type="button" id="pubCancelar" class="sec">Cerrar</button>
+      <button type="submit" id="pubEnviar">Publicar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>

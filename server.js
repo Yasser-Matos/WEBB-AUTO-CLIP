@@ -10,6 +10,7 @@
 //   cola.js      -> fila de espera cuando hay muchos videos a la vez
 //   pagos.js     -> cobro automático con Stripe y PayPal
 //   redes.js     -> publicar directo en YouTube, TikTok e Instagram
+//   panel.js     -> panel de administración (/admin)
 //   zip.js       -> descargar todos los clips en un solo archivo
 //   public/      -> la página que ve el usuario
 //
@@ -35,6 +36,7 @@ const { crearCola } = require('./cola');
 const { escribirZip } = require('./zip');
 const pagos = require('./pagos');
 const redes = require('./redes');
+const panel = require('./panel');
 
 if (C.JWT_SECRET === 'cambia-esta-clave-larga') {
   console.warn('⚠️  Estás usando la clave JWT por defecto. Pon JWT_SECRET en las Variables de Railway.');
@@ -98,17 +100,33 @@ app.post('/api/login', U.limitador(10, 10 * 60 * 1000), (req, res) => {
   if (!u || !bcrypt.compareSync(String(password || ''), u.hash)) {
     return res.status(401).json({ error: 'Correo o contraseña incorrectos' });
   }
-  const token = jwt.sign({ id: u.id }, C.JWT_SECRET, { expiresIn: '7d' });
-  res.cookie('token', token, {
-    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production',
-    maxAge: 7 * 24 * 3600 * 1000,
-  });
+  iniciarSesion(res, u.id);
   res.json({ ok: true });
 });
 
 app.post('/api/logout', (req, res) => { res.clearCookie('token'); res.json({ ok: true }); });
 
-// Datos de la cuenta: plan, límites y cuánto ha usado este mes
+// ---------------------- PRUEBA GRATIS ----------------------
+// Crea una cuenta de prueba (sin pagar) y la deja conectada. Una prueba por correo.
+function iniciarSesion(res, id) {
+  const token = jwt.sign({ id }, C.JWT_SECRET, { expiresIn: '7d' });
+  res.cookie('token', token, {
+    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 3600 * 1000,
+  });
+}
+app.post('/api/registro', U.limitador(10, 60 * 60 * 1000), (req, res) => {
+  const { email, password } = req.body || {};
+  const correo = String(email || '').toLowerCase().trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) return res.status(400).json({ error: 'Escribe un correo válido' });
+  if (String(password || '').length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+  const r = DB.registrarPrueba({ email: correo, hash: bcrypt.hashSync(String(password), 10), ip: req.ip });
+  if (r.error) return res.status(400).json({ error: r.error });
+  iniciarSesion(res, r.usuario.id);
+  res.json({ ok: true });
+});
+
+// Datos de la cuenta: plan, límites y cuánto ha usado (en la prueba: en total; en planes: al mes)
 app.get('/api/yo', requiereLogin, (req, res) => {
   const u = req.usuario;
   const plan = DB.planDe(u);
@@ -116,32 +134,12 @@ app.get('/api/yo', requiereLogin, (req, res) => {
     email: u.email,
     vence: u.vence,
     plan: { id: C.PLANES[u.plan] ? u.plan : C.PLAN_POR_DEFECTO, ...plan },
-    usoMes: DB.usoDelMes(u.id),
+    usoMes: DB.usoParaPlan(u.id, plan),
     limites: {
       maxClips: Math.min(C.MAX_CLIPS, plan.maxClips),
       maxDuracion: Math.min(C.MAX_DURACION_CLIP, plan.maxDuracion),
     },
   });
-});
-
-// ---------------------- ADMIN: crear / renovar usuarios a mano ----------------------
-// (Con los pagos automáticos casi no lo necesitas, pero sirve para regalar accesos.)
-app.post('/api/admin/usuario', U.limitador(20, 10 * 60 * 1000), (req, res) => {
-  const { clave, email, password, dias, plan } = req.body || {};
-  if (!C.ADMIN_KEY || !U.igualesSeguros(clave || '', C.ADMIN_KEY)) return res.status(403).json({ error: 'Clave de admin incorrecta' });
-  const correo = String(email || '').toLowerCase().trim();
-  if (!correo || !password || !dias) return res.status(400).json({ error: 'Faltan datos' });
-  const planId = plan || C.PLAN_POR_DEFECTO;
-  if (!C.PLANES[planId]) return res.status(400).json({ error: 'Ese plan no existe' });
-
-  const vence = DB.sumarDias(DB.hoy(), Number(dias));
-  const hash = bcrypt.hashSync(String(password), 10);
-  // Si el correo ya existe, se renueva (nueva contraseña, plan y fecha)
-  DB.db.prepare(`
-    INSERT INTO usuarios (email, hash, vence, plan) VALUES (?, ?, ?, ?)
-    ON CONFLICT(email) DO UPDATE SET hash = excluded.hash, vence = excluded.vence, plan = excluded.plan, activo = 1
-  `).run(correo, hash, vence, planId);
-  res.json({ ok: true, email: correo, vence, plan: planId });
 });
 
 // ---------------------- PROCESAR VIDEO ----------------------
@@ -181,8 +179,10 @@ app.post('/api/procesar', requiereLogin, recibirArchivos, (req, res) => {
     rutaLogoSubido = logoSubido;
   }
 
-  if (DB.usoDelMes(req.usuario.id) >= plan.videosPorMes) {
-    return error(403, `Ya usaste tus ${plan.videosPorMes} videos de este mes. Mejora tu plan o espera al próximo mes.`);
+  if (DB.usoParaPlan(req.usuario.id, plan) >= plan.videosPorMes) {
+    return error(403, plan.esPrueba
+      ? `Ya usaste los ${plan.videosPorMes} videos de tu prueba gratis. Compra un plan para seguir.`
+      : `Ya usaste tus ${plan.videosPorMes} videos de este mes. Mejora tu plan o espera al próximo mes.`);
   }
   if (cola.cantidadDe(req.usuario.id) >= C.MAX_TRABAJOS_POR_USUARIO) {
     return error(429, 'Ya tienes videos en proceso. Espera a que terminen.');
@@ -349,6 +349,8 @@ app.get('/api/publico/:id/:n', (req, res) => {
 
 // ---------------------- PAGOS Y REDES ----------------------
 pagos.montar(app, { bcrypt });
+// Panel de administración (/admin)
+panel.montar(app, { jwt, bcrypt, estadoServidor: () => ({ activos: cola.activos, esperando: cola.esperando, trabajos: trabajos.size }) });
 redes.montar(app, { jwt, requiereLogin, clipDe });
 
 // Cualquier error inesperado responde en JSON (la página lo entiende)

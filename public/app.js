@@ -83,12 +83,28 @@ async function iniciar() {
 // ======================================================================
 function cambiarTabAcceso(cual) {
   $('tabEntrar').classList.toggle('on', cual === 'entrar');
+  $('tabPrueba').classList.toggle('on', cual === 'prueba');
   $('tabComprar').classList.toggle('on', cual === 'comprar');
   $('formEntrar').classList.toggle('oculto', cual !== 'entrar');
+  $('formPrueba').classList.toggle('oculto', cual !== 'prueba');
   $('formComprar').classList.toggle('oculto', cual !== 'comprar');
 }
 $('tabEntrar').onclick = () => cambiarTabAcceso('entrar');
+$('tabPrueba').onclick = () => cambiarTabAcceso('prueba');
 $('tabComprar').onclick = () => cambiarTabAcceso('comprar');
+
+// Prueba gratis: crea la cuenta sin pagar y entra directo
+$('formPrueba').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('btnPrueba').disabled = true; $('errPrueba').textContent = '';
+  const r = await api('/api/registro', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: $('emailPrueba').value, password: $('clavePrueba').value }),
+  });
+  $('btnPrueba').disabled = false;
+  if (r.ok) { avisar('¡Listo! Tu prueba gratis empezó. Crea tus primeros clips.', 'ok'); iniciar(); }
+  else $('errPrueba').textContent = r.datos.error || 'No se pudo crear la prueba';
+});
 
 $('formEntrar').addEventListener('submit', async e => {
   e.preventDefault();
@@ -108,7 +124,18 @@ async function prepararAcceso() {
     const r = await api('/api/planes');
     est.planes = r.ok ? r.datos : { planes: [], proveedores: [], dias: 30 };
   }
-  const { planes, proveedores, dias } = est.planes;
+  const { planes, proveedores, dias, prueba } = est.planes;
+
+  // Prueba gratis (solo si el administrador la tiene activa)
+  $('tabPrueba').classList.toggle('oculto', !prueba);
+  if (prueba) {
+    $('tituloPrueba').textContent = `${prueba.dias} días gratis, sin tarjeta`;
+    $('listaPrueba').replaceChildren(...[
+      `${prueba.videosPorMes} videos para probar`,
+      `Hasta ${prueba.maxClips} clips por video`,
+      `Clips de hasta ${prueba.maxDuracion} segundos`,
+    ].map(t => el('li', { text: t })));
+  }
   const cont = $('listaPlanes');
   cont.replaceChildren();
   planes.forEach((p, i) => {
@@ -162,19 +189,47 @@ $('btnMejorar').onclick = async () => {
   $('btnVolver').classList.remove('oculto');
   cambiarTabAcceso('comprar');
   $('tabEntrar').classList.add('oculto');
+  $('tabPrueba').classList.add('oculto');          // quien ya tiene cuenta no vuelve a la prueba
   mostrar('acceso');
 };
 $('btnVolver').onclick = () => { $('tabEntrar').classList.remove('oculto'); $('btnVolver').classList.add('oculto'); mostrar('app'); };
+$('btnComprarDesdePrueba').onclick = () => $('btnMejorar').click();
 
 // ======================================================================
 //  APP: preparar pantalla según el plan
 // ======================================================================
-function prepararApp() {
-  const { email, vence, plan, usoMes, limites } = est.yo;
-  $('infoUsuario').textContent = email;
-  $('planNombre').textContent = `Plan ${plan.nombre}`;
-  $('planDetalle').textContent = `Acceso hasta ${vence} · ${usoMes} de ${plan.videosPorMes} videos este mes`;
+// Días que le quedan hasta la fecha de vencimiento (AAAA-MM-DD)
+function diasRestantes(vence) {
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((new Date(vence + 'T00:00:00') - hoy) / 86400000));
+}
+
+// Pinta el plan, el contador de videos y el aviso de la prueba gratis
+function pintarPlan() {
+  const { vence, plan, usoMes } = est.yo;
+  const prueba = !!plan.esPrueba;
+  $('planNombre').textContent = prueba ? 'Prueba gratis' : `Plan ${plan.nombre}`;
+  $('planDetalle').textContent = prueba
+    ? `${usoMes} de ${plan.videosPorMes} videos usados`
+    : `Acceso hasta ${vence} · ${usoMes} de ${plan.videosPorMes} videos este mes`;
   $('usoBarra').style.width = Math.min(100, (usoMes / plan.videosPorMes) * 100) + '%';
+  $('btnMejorar').textContent = prueba ? 'Comprar un plan' : 'Mejorar o renovar';
+
+  const banner = $('bannerPrueba');
+  banner.classList.toggle('oculto', !prueba);
+  if (prueba) {
+    const d = diasRestantes(vence), quedan = Math.max(0, plan.videosPorMes - usoMes);
+    $('bannerTitulo').textContent = d === 1 ? 'Te queda 1 día de prueba' : `Te quedan ${d} días de prueba`;
+    $('bannerTexto').textContent = quedan > 0
+      ? `Puedes crear ${quedan} ${quedan === 1 ? 'video más' : 'videos más'}. Con un plan tienes más videos, clips más largos y puedes poner tu logo.`
+      : 'Ya usaste todos los videos de tu prueba. Compra un plan para seguir creando clips.';
+  }
+}
+
+function prepararApp() {
+  const { email, plan, limites } = est.yo;
+  $('infoUsuario').textContent = email;
+  pintarPlan();
 
   // Límites de los botones + y −
   $('cantidad').max = limites.maxClips;
@@ -378,11 +433,7 @@ async function consultar() {
   const yo = await api('/api/yo');                    // actualiza el contador del mes
   if (yo.ok) { est.yo = yo.datos; prepararPlanBarra(); }
 }
-function prepararPlanBarra() {
-  const { vence, plan, usoMes } = est.yo;
-  $('planDetalle').textContent = `Acceso hasta ${vence} · ${usoMes} de ${plan.videosPorMes} videos este mes`;
-  $('usoBarra').style.width = Math.min(100, (usoMes / plan.videosPorMes) * 100) + '%';
-}
+function prepararPlanBarra() { pintarPlan(); }
 
 // ---------- Lista de clips ----------
 function mostrarClips(t) {

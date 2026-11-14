@@ -16,6 +16,8 @@ const { baseUrl, igualesSeguros, limitador } = require('./utiles');
 
 const env = process.env;
 const centavos = plan => Math.round(plan.precioUSD * 100);
+// Planes que se pueden comprar (la prueba gratis no se vende)
+const planesVenta = () => Object.entries(C.PLANES).filter(([, p]) => !p.esPrueba);
 
 function proveedoresActivos() {
   const lista = [];
@@ -30,7 +32,9 @@ function confirmarPago(pagoId, centavosPagados) {
   const pago = DB.obtenerPago(pagoId);
   if (!pago) return false;
   const plan = C.PLANES[pago.plan];
-  if (!plan || centavosPagados !== centavos(plan)) {
+  // Se compara con el monto guardado al crear el pago (así un cambio de precio no rompe pagos en curso)
+  const esperado = pago.monto > 0 ? Math.round(pago.monto * 100) : (plan ? centavos(plan) : -1);
+  if (!plan || plan.esPrueba || centavosPagados !== esperado) {
     console.error(`[pagos] Monto distinto al esperado en el pago ${pagoId}: ${centavosPagados}`);
     return false;
   }
@@ -153,7 +157,9 @@ function montar(app, { bcrypt }) {
     res.json({
       dias: C.DIAS_POR_COMPRA,
       proveedores: proveedoresActivos(),
-      planes: Object.entries(C.PLANES).map(([id, p]) => ({ id, ...p })),
+      planes: planesVenta().map(([id, p]) => ({ id, ...p })),
+      // Datos de la prueba gratis (la web muestra la pestaña solo si está activa)
+      prueba: C.PRUEBA.activa ? { dias: C.PRUEBA.dias, ...C.PLANES.prueba } : null,
     });
   });
 
@@ -165,7 +171,7 @@ function montar(app, { bcrypt }) {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) return res.status(400).json({ error: 'Escribe un correo válido' });
       if (String(password || '').length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
       const p = C.PLANES[plan];
-      if (!p) return res.status(400).json({ error: 'Plan no válido' });
+      if (!p || p.esPrueba) return res.status(400).json({ error: 'Plan no válido' });
       if (!proveedoresActivos().includes(proveedor)) return res.status(400).json({ error: 'Método de pago no disponible' });
 
       // Si el correo ya tiene cuenta, la contraseña debe ser la suya (así nadie le cambia la clave a otro)
@@ -175,7 +181,7 @@ function montar(app, { bcrypt }) {
       }
 
       const pago = {
-        id: crypto.randomBytes(12).toString('hex'), email: correo, plan, proveedor,
+        id: crypto.randomBytes(12).toString('hex'), email: correo, plan, proveedor, monto: p.precioUSD,
         hash: existente ? existente.hash : bcrypt.hashSync(String(password), 10),
       };
       DB.crearPago(pago);

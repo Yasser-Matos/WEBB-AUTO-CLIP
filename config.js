@@ -29,8 +29,24 @@ module.exports = {
   DIAS_POR_COMPRA: 30,          // cada pago da este número de días de acceso
   PLAN_POR_DEFECTO: 'basico',
 
+  // ---- Prueba gratis ----
+  // (También puedes cambiarla desde el panel /admin -> Planes y precios)
+  PRUEBA: { activa: true, dias: 7 },   // activa: true/false · dias: cuántos días dura
+  MAX_PRUEBAS_POR_IP_DIA: 2,           // máximo de pruebas nuevas por día desde la misma conexión
+
   // ---- Planes (cambia nombres, precios en dólares y límites) ----
   PLANES: {
+    // El plan de la prueba gratis: sus videos cuentan EN TOTAL (no por mes). No se vende.
+    prueba: {
+      nombre: 'Prueba gratis',
+      esPrueba: true,
+      precioUSD: 0,
+      videosPorMes: 3,      // en la prueba: videos EN TOTAL
+      maxClips: 5,
+      maxDuracion: 30,
+      logo: false,
+      publicar: false,
+    },
     basico: {
       nombre: 'Básico',
       precioUSD: 9.99,

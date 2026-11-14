@@ -150,3 +150,53 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .pie { display: block; text-align: center; margin-top: 8px; }
 
 @media (min-width: 640px) { .opciones { grid-template-columns: repeat(3, 1fr); } .opcion { flex-direction: column; text-align: center; } .opcion span { align-items: center; } .planes { grid-template-columns: repeat(2, 1fr); } }
+
+/* =====================================================================
+   PRUEBA GRATIS + DISEÑO DE ESCRITORIO (PC y laptop)
+   El ámbar (--gratis) se usa solo para lo gratuito. Cámbialo aquí.
+   ===================================================================== */
+:root { --gratis: #f2a31b; --gratis-suave: rgba(242, 163, 27, .14); }
+
+/* Pestañas de acceso: la de prueba gratis resalta en ámbar */
+.tabs button.gratis { background: var(--gratis-suave); color: var(--gratis); }
+.tabs button.gratis.on { background: var(--gratis); color: #2a1d00; }
+button.gratis { background: var(--gratis); color: #2a1d00; }
+.oferta { padding: 14px 16px; margin-bottom: 4px; border-radius: 12px; background: var(--gratis-suave); border: 1px solid rgba(242, 163, 27, .35); }
+.oferta ul { margin: 8px 0 0; padding-left: 18px; color: var(--texto); font-size: .92rem; }
+
+/* Aviso dentro de la app mientras dura la prueba */
+.aviso-prueba { margin-bottom: 14px; padding: 16px; border-radius: var(--radio); background: var(--gratis-suave); border: 1px solid rgba(242, 163, 27, .4); }
+.aviso-prueba b { display: block; color: var(--gratis); font-size: 1.05rem; }
+.aviso-prueba p { margin: 6px 0 12px; color: var(--texto); font-size: .93rem; }
+
+.top-derecha { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.top-derecha small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.plan-card .barra { margin-top: 12px; }
+.plan-card #usoBarra { background: var(--color); }
+.columnas { display: block; }
+.acceso { max-width: 560px; }
+
+/* Laptop y PC: dos columnas. A la izquierda lo que configuras; a la derecha el plan, el avance y los clips */
+@media (min-width: 980px) {
+  .caja.app { max-width: 1180px; padding-top: 26px; }
+  .columnas { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: start; }
+  .col-lado { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: thin; }
+  .tarjeta { padding: 22px; }
+  .caja.app h1 { font-size: 1.6rem; }
+  .clip video { width: 110px; }
+  #btnProcesar { margin-bottom: 0; }
+  .top { margin-bottom: 22px; }
+}
+@media (min-width: 1500px) {
+  .caja.app { max-width: 1320px; }
+  .columnas { grid-template-columns: minmax(0, 1fr) 460px; }
+}
+
+/* Celular: el plan y el aviso de la prueba salen arriba, antes del formulario */
+@media (max-width: 979px) {
+  .columnas { display: flex; flex-direction: column; }
+  .col-lado { display: contents; }
+  .col-lado .plan-card { order: -2; }
+  .col-lado .aviso-prueba { order: -1; }
+}
+.tabs button { padding-left: 8px; padding-right: 8px; }
