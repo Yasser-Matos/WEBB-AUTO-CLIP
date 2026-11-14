@@ -1,3 +1,0 @@
-# Le dice a Railway que instale ffmpeg (corta los videos) y yt-dlp (descarga desde links)
-[phases.setup]
-nixPkgs = ["...", "ffmpeg", "yt-dlp"]
