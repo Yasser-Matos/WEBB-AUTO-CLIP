@@ -1,21 +1,4 @@
-// =====================================================================
-// VIDEOCLIPS - Servidor (Node.js + Express)
-// Todo el proyecto usa UN solo lenguaje: JavaScript.
-//
-// Archivos del proyecto:
-//   config.js    -> precios, planes y límites (aquí cambias números)
-//   db.js        -> base de datos (usuarios, pagos, redes)
-//   cortador.js  -> decide dónde y cómo se corta cada clip
-//   analisis.js  -> encuentra los "mejores momentos" del video
-//   cola.js      -> fila de espera cuando hay muchos videos a la vez
-//   pagos.js     -> cobro automático con Stripe y PayPal
-//   redes.js     -> publicar directo en YouTube, TikTok e Instagram
-//   panel.js     -> panel de administración (/admin)
-//   zip.js       -> descargar todos los clips en un solo archivo
-//   public/      -> la página que ve el usuario
-//
-// NADA se guarda: el video original se borra al terminar y los clips a los 20 min.
-// =====================================================================
+
 
 const express = require('express');
 const cookieParser = require('cookie-parser');
@@ -225,6 +208,45 @@ app.post('/api/procesar', requiereLogin, recibirArchivos, (req, res) => {
   res.json({ id });   // respondemos ya; el trabajo sigue en segundo plano
 });
 
+
+// ---------- Descarga por link: opciones extra y mensajes claros ----------
+// YouTube suele bloquear a los servidores. Si algún día quieres intentarlo con ayuda extra:
+//   YTDLP_PROXY      = dirección de un proxy residencial (ej: http://usuario:clave@host:puerto)
+//   YTDLP_COOKIES_B64 = tu archivo cookies.txt convertido a base64
+// Si no pones nada, se descarga normal.
+let archivoCookies = null;
+function opcionesDescargaExtra() {
+  const extra = [];
+  if (process.env.YTDLP_PROXY) extra.push('--proxy', process.env.YTDLP_PROXY.trim());
+  if (process.env.YTDLP_COOKIES_B64) {
+    try {
+      if (!archivoCookies) {
+        archivoCookies = path.join(os.tmpdir(), 'ytdlp-cookies.txt');
+        fs.writeFileSync(archivoCookies, Buffer.from(process.env.YTDLP_COOKIES_B64.trim(), 'base64'), { mode: 0o600 });
+      }
+      extra.push('--cookies', archivoCookies);
+    } catch (e) { console.error('[descarga] cookies no válidas:', e.message); }
+  }
+  return extra;
+}
+// Convierte los errores técnicos de yt-dlp en algo que el cliente entienda
+function mensajeErrorDescarga(texto) {
+  const t = String(texto || '');
+  if (/sign in to confirm|not a bot|cookies-from-browser|--cookies/i.test(t))
+    return 'Ese sitio no deja descargar el video desde nuestro servidor (pasa mucho con YouTube). Sube el archivo del video, o prueba con otro link.';
+  if (/private video|members-only|this video is private/i.test(t))
+    return 'Ese video es privado. Usa uno público o sube el archivo.';
+  if (/unsupported url/i.test(t))
+    return 'No reconocemos ese link. Pega el link directo del video o sube el archivo.';
+  if (/video unavailable|has been removed|not available|404/i.test(t))
+    return 'Ese video ya no está disponible. Revisa el link o sube el archivo.';
+  if (/429|too many requests/i.test(t))
+    return 'El sitio nos pidió esperar un poco. Intenta de nuevo en unos minutos o sube el archivo.';
+  if (/larger than max-filesize|max-filesize/i.test(t))
+    return 'Ese video es demasiado grande (máximo 1 GB). Usa uno más corto o recórtalo antes.';
+  return null;
+}
+
 async function procesar(t, o) {
   t.estado = 'procesando';
   t.mensaje = 'Preparando...';
@@ -235,6 +257,7 @@ async function procesar(t, o) {
       t.mensaje = 'Descargando el video del link...';
       await U.ejecutar('yt-dlp', [
         '--no-playlist', '--no-warnings', '--max-filesize', '1G', '--socket-timeout', '30',
+        ...opcionesDescargaExtra(),
         '-f', 'bv*[height<=1080]+ba/b[height<=1080]/b', '--merge-output-format', 'mp4',
         '-o', path.join(t.dir, 'origen.%(ext)s'), '--', o.link,
       ], { timeoutMs: 10 * 60 * 1000 });
@@ -283,7 +306,9 @@ async function procesar(t, o) {
     t.mensaje = `Listo: ${inicios.length} clips.` + (aviso ? ' ' + aviso : '');
   } catch (e) {
     t.estado = 'error';
-    t.mensaje = 'No se pudo procesar: ' + String(e.message).split('\n').filter(Boolean).slice(-2).join(' ').slice(0, 200);
+    const claro = (!o.archivo) ? mensajeErrorDescarga(e.message) : null;
+    if (claro) console.error('[descarga]', String(e.message).slice(-300));
+    t.mensaje = claro || ('No se pudo procesar: ' + String(e.message).split('\n').filter(Boolean).slice(-2).join(' ').slice(0, 200));
     DB.sumarUso(t.userId, -1);            // si falló, no le descontamos el video de su mes
     U.borrarCarpeta(t.dir);
   } finally {
