@@ -79,19 +79,19 @@ async function stripeCrearSesion(pago, plan, base) {
 }
 
 // ---------- PAYPAL ----------
-const paypalApi = () => env.PAYPAL_MODE === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
+const paypalApi = () => env.PAYPAL_MODO === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
 
 async function paypalToken() {
   const r = await fetch(`${paypalApi()}/v1/oauth2/token`, {
     method: 'POST',
     headers: {
-      Authorization: 'Basic ' + Buffer.from(`${env.PAYPAL_CLIENT_ID}:${env.PAYPAL_CLIENT_SECRET}`).toString('base64'),
+      Authorization: 'Basic ' + Buffer.from(`${String(env.PAYPAL_CLIENT_ID).trim()}:${String(env.PAYPAL_CLIENT_SECRET).trim()}`).toString('base64'),
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: 'grant_type=client_credentials',
   });
   const j = await r.json();
-  if (!r.ok) throw new Error('PayPal no respondió');
+  if (!r.ok) throw new Error(`PayPal rechazó las claves (${r.status} ${j.error || ''} ${j.error_description || ''}). Modo: ${env.PAYPAL_MODO === 'live' ? 'live' : 'sandbox'}. Revisa que las claves sean de ese modo y sin espacios.`);
   return j.access_token;
 }
 
@@ -116,7 +116,7 @@ async function paypalCrearOrden(pago, plan, base) {
   });
   const j = await r.json();
   const enlace = (j.links || []).find(l => l.rel === 'payer-action' || l.rel === 'approve');
-  if (!r.ok || !enlace) throw new Error('PayPal no creó la orden');
+  if (!r.ok || !enlace) throw new Error(`PayPal no creó la orden (${r.status} ${j.name || ''} ${j.message || ''} ${JSON.stringify(j.details || [])})`);
   return { url: enlace.href, orden: j.id };
 }
 
