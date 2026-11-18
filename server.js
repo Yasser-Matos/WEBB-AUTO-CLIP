@@ -1,4 +1,21 @@
-
+// =====================================================================
+// VIDEOCLIPS - Servidor (Node.js + Express)
+// Todo el proyecto usa UN solo lenguaje: JavaScript.
+//
+// Archivos del proyecto:
+//   config.js    -> precios, planes y límites (aquí cambias números)
+//   db.js        -> base de datos (usuarios, pagos, redes)
+//   cortador.js  -> decide dónde y cómo se corta cada clip
+//   analisis.js  -> encuentra los "mejores momentos" del video
+//   cola.js      -> fila de espera cuando hay muchos videos a la vez
+//   pagos.js     -> cobro automático con Stripe y PayPal
+//   redes.js     -> publicar directo en YouTube, TikTok e Instagram
+//   panel.js     -> panel de administración (/admin)
+//   zip.js       -> descargar todos los clips en un solo archivo
+//   public/      -> la página que ve el usuario
+//
+// NADA se guarda: el video original se borra al terminar y los clips a los 20 min.
+// =====================================================================
 
 const express = require('express');
 const cookieParser = require('cookie-parser');
@@ -196,7 +213,7 @@ app.post('/api/procesar', requiereLogin, recibirArchivos, (req, res) => {
 
   const opciones = {
     archivo: video ? video.path : null, link, cantidad, duracion, modo, formato, logo,
-    desde: desde === null ? 0 : desde, hasta, maxDuracion: maxDur,
+    desde: desde === null ? 0 : desde, desdeMarcado: desde !== null, hasta, maxDuracion: maxDur,
   };
   const aceptado = cola.agregar({ id, userId: req.usuario.id, correr: () => procesar(trabajo, opciones) });
   if (!aceptado) {
@@ -214,6 +231,8 @@ app.post('/api/procesar', requiereLogin, recibirArchivos, (req, res) => {
 //   YTDLP_PROXY      = dirección de un proxy residencial (ej: http://usuario:clave@host:puerto)
 //   YTDLP_COOKIES_B64 = tu archivo cookies.txt convertido a base64
 // Si no pones nada, se descarga normal.
+// Máximo de un tramo de live (en segundos). Súbelo si tu servidor aguanta más.
+const LIVE_MAX_SEG = 30 * 60;
 let archivoCookies = null;
 function opcionesDescargaExtra() {
   const extra = [];
@@ -232,6 +251,10 @@ function opcionesDescargaExtra() {
 // Convierte los errores técnicos de yt-dlp en algo que el cliente entienda
 function mensajeErrorDescarga(texto) {
   const t = String(texto || '');
+  if (/^LIVE_PROXIMO/.test(t)) return 'Ese live todavía no empieza. Vuelve a pegar el link cuando ya haya comenzado.';
+  if (/^LIVE_SIN_TRAMO:vivo/.test(t)) return 'Ese link es un live EN VIVO. Marca de dónde a dónde quieres cortar en "Desde" y "Hasta" (por ejemplo 10:00 a 15:00, contando desde que empezó el live) y vuelve a intentarlo.';
+  if (/^LIVE_SIN_TRAMO/.test(t)) return 'Ese link es un live (puede durar horas). Marca de dónde a dónde quieres cortar en "Desde" y "Hasta" (por ejemplo 1:20:00 a 1:35:00) y vuelve a intentarlo.';
+  if (/^LIVE_TRAMO_LARGO/.test(t)) return 'En un live el tramo puede ser de máximo ' + (LIVE_MAX_SEG / 60) + ' minutos. Acorta el "Desde" y "Hasta".';
   if (/sign in to confirm|not a bot|cookies-from-browser|--cookies/i.test(t))
     return 'Ese sitio no deja descargar el video desde nuestro servidor (pasa mucho con YouTube). Sube el archivo del video, o prueba con otro link.';
   if (/private video|members-only|this video is private/i.test(t))
@@ -254,16 +277,53 @@ async function procesar(t, o) {
   try {
     // 1) Si viene un link, lo descargamos con yt-dlp
     if (!origen) {
-      t.mensaje = 'Descargando el video del link...';
+      // 1a) Antes de bajar nada, miramos si el link es un LIVE (en directo o ya terminado).
+      //     Un live puede durar horas, así que el cliente debe marcar de dónde a dónde cortar
+      //     y solo descargamos ese tramo (más rápido y gasta menos memoria).
+      t.mensaje = 'Revisando el link...';
+      let tramoLive = null;            // { desde, hasta, enVivo }
+      try {
+        const sondeo = await U.ejecutar('yt-dlp', [
+          '--dump-single-json', '--skip-download', '--no-playlist', '--no-warnings', '--socket-timeout', '30',
+          ...opcionesDescargaExtra(), '--', o.link,
+        ], { timeoutMs: 60 * 1000 });
+        const meta = JSON.parse(sondeo);
+        const estadoLive = meta.live_status || (meta.is_live ? 'is_live' : '');
+        if (estadoLive === 'is_upcoming') {
+          throw new Error('LIVE_PROXIMO');
+        }
+        if (estadoLive === 'is_live' || estadoLive === 'was_live') {
+          const enVivo = estadoLive === 'is_live';
+          if (!o.desdeMarcado || o.hasta === null) {
+            throw new Error('LIVE_SIN_TRAMO:' + (enVivo ? 'vivo' : 'terminado'));
+          }
+          if (o.hasta - o.desde > LIVE_MAX_SEG) {
+            throw new Error('LIVE_TRAMO_LARGO');
+          }
+          tramoLive = { desde: o.desde, hasta: o.hasta, enVivo };
+        }
+      } catch (e) {
+        // Los avisos de live se muestran tal cual; si el sondeo falla por otra cosa
+        // (ej. un link directo a un .mp4) seguimos con la descarga normal.
+        if (/^LIVE_/.test(e.message)) throw e;
+        if (mensajeErrorDescarga(e.message)) throw e;   // bloqueado, privado, etc.
+      }
+
+      t.mensaje = tramoLive ? 'Es un live: descargando solo el tramo que marcaste...' : 'Descargando el video del link...';
       await U.ejecutar('yt-dlp', [
         '--no-playlist', '--no-warnings', '--max-filesize', '1G', '--socket-timeout', '30',
         ...opcionesDescargaExtra(),
+        // Live: solo el tramo marcado ("*desde-hasta" en segundos). Si sigue en directo, desde el inicio.
+        ...(tramoLive ? ['--download-sections', `*${tramoLive.desde}-${tramoLive.hasta}`] : []),
+        ...(tramoLive && tramoLive.enVivo ? ['--live-from-start'] : []),
         '-f', 'bv*[height<=1080]+ba/b[height<=1080]/b', '--merge-output-format', 'mp4',
         '-o', path.join(t.dir, 'origen.%(ext)s'), '--', o.link,
       ], { timeoutMs: 10 * 60 * 1000 });
       const f = fs.readdirSync(t.dir).find(n => n.startsWith('origen.') && !/\.(part|ytdl)$/.test(n));
       if (!f) throw new Error('No se pudo descargar el video de ese link');
       origen = path.join(t.dir, f);
+      // El archivo bajado YA es solo el tramo: ahora empieza en 0 y dura (hasta - desde)
+      if (tramoLive) { o.hasta = tramoLive.hasta - tramoLive.desde; o.desde = 0; }
     }
 
     // 2) Medimos el video y el tramo que se va a usar
