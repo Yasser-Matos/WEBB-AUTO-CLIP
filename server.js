@@ -1,21 +1,3 @@
-// =====================================================================
-// VIDEOCLIPS - Servidor (Node.js + Express)
-// Todo el proyecto usa UN solo lenguaje: JavaScript.
-//
-// Archivos del proyecto:
-//   config.js    -> precios, planes y límites (aquí cambias números)
-//   db.js        -> base de datos (usuarios, pagos, redes)
-//   cortador.js  -> decide dónde y cómo se corta cada clip
-//   analisis.js  -> encuentra los "mejores momentos" del video
-//   cola.js      -> fila de espera cuando hay muchos videos a la vez
-//   pagos.js     -> cobro automático con Stripe y PayPal
-//   redes.js     -> publicar directo en YouTube, TikTok e Instagram
-//   panel.js     -> panel de administración (/admin)
-//   zip.js       -> descargar todos los clips en un solo archivo
-//   public/      -> la página que ve el usuario
-//
-// NADA se guarda: el video original se borra al terminar y los clips a los 20 min.
-// =====================================================================
 
 const express = require('express');
 const cookieParser = require('cookie-parser');
