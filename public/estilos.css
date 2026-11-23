@@ -200,3 +200,56 @@ button.gratis { background: var(--gratis); color: #2a1d00; }
   .col-lado .aviso-prueba { order: -1; }
 }
 .tabs button { padding-left: 8px; padding-right: 8px; }
+
+/* =====================================================================
+   EDITOR DE CLIPS
+   ===================================================================== */
+dialog.editor { width: min(96vw, 1000px); max-height: 94vh; padding: 0; overflow: hidden; }
+dialog.editor[open] { display: flex; flex-direction: column; }
+.ed-cab { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--borde); }
+.ed-cab h2 { margin: 0; }
+.ed-cuerpo { display: grid; gap: 16px; padding: 16px 18px; overflow-y: auto; flex: 1; min-height: 0; }
+.ed-vista { text-align: center; }
+.ed-marco { position: relative; display: inline-block; line-height: 0; background: #000; border-radius: 10px; overflow: hidden; max-width: 100%; }
+.ed-marco video { display: block; max-width: 100%; max-height: 52vh; width: auto; height: auto; background: #000; }
+.ed-capa { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.ed-linea { position: absolute; left: 50%; transform: translateX(-50%); max-width: 88%; text-align: center; font-weight: 700; line-height: 1.25; white-space: pre-wrap; overflow-wrap: anywhere; font-family: "DejaVu Sans", system-ui, sans-serif; }
+.ed-arriba { top: 7%; }
+.ed-centro { top: 50%; transform: translate(-50%, -50%); }
+.ed-abajo { bottom: 9%; }
+.ed-sub { bottom: 10%; }
+.ed-vista small { display: block; margin-top: 8px; }
+
+.ed-controles { display: grid; gap: 12px; align-content: start; }
+.ed-bloque { background: var(--tarjeta2); border: 1px solid var(--borde); border-radius: 12px; padding: 12px 14px; }
+.ed-bloque h3 { margin: 0 0 8px; font-size: .98rem; }
+.ed-botones { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.ed-vel { display: flex; gap: 6px; flex-wrap: wrap; }
+.ed-vel button { flex: 1 1 52px; padding: 9px 6px; background: #2c303a; }
+.ed-vel button.on { background: var(--color); }
+.ed-item { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--borde); }
+.ed-item:first-child { border-top: 0; }
+.ed-fila2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ed-fila3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ed-check { display: flex; align-items: center; gap: 8px; font-size: .92rem; color: var(--suave); }
+.ed-check input { width: auto; }
+.ed-bloque input[type=range] { width: 100%; padding: 0; }
+#dlgEditor .msg { margin: 0; padding: 8px 18px 0; min-height: 1.4em; }
+.ed-pie { display: flex; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--borde); }
+.ed-pie button { flex: 1; }
+.ed-pie #edAplicar { flex: 2; }
+
+/* En pantalla ancha (PC / laptop): video a la izquierda, controles a la derecha con su propio scroll */
+@media (min-width: 820px) {
+  .ed-cuerpo { grid-template-columns: minmax(260px, 340px) 1fr; overflow: hidden; }
+  .ed-vista { position: sticky; top: 0; align-self: start; }
+  .ed-controles { overflow-y: auto; max-height: calc(94vh - 190px); padding-right: 4px; }
+}
+@media (max-width: 520px) {
+  .ed-fila3 { grid-template-columns: 1fr 1fr; }
+  .ed-cab, .ed-cuerpo, .ed-pie { padding-left: 14px; padding-right: 14px; }
+}
+@media (max-width: 520px) {
+  .ed-vel { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .ed-marco video { max-height: 40vh; }
+}

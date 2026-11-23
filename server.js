@@ -31,6 +31,7 @@ const C = require('./config');
 const U = require('./utiles');
 const DB = require('./db');
 const K = require('./cortador');
+const E = require('./editor');
 const A = require('./analisis');
 const { crearCola } = require('./cola');
 const { escribirZip } = require('./zip');
@@ -420,7 +421,81 @@ app.get('/api/clip/:id/:n', requiereLogin, (req, res) => {
   const clip = clipDe(req.usuario.id, req.params.id, parseInt(req.params.n, 10));
   if (!clip) return res.status(404).end();
   if (req.query.descargar) res.setHeader('Content-Disposition', `attachment; filename="clip_${clip.n}.mp4"`);
+  // ?original=1 -> el clip sin editar (lo usa la vista previa del editor)
+  const orig = clip.archivo.replace(/\.mp4$/, '.orig.mp4');
+  if (req.query.original && fs.existsSync(orig)) return res.sendFile(orig);
   res.sendFile(clip.archivo);   // soporta reproducción con "adelantar" en el navegador
+});
+
+
+// ---------------------- EDITOR DE CLIPS ----------------------
+// El cliente edita un clip ya cortado: recorte, velocidad, volumen, texto y subtítulos.
+// Siempre se parte del clip original (clip_N.orig.mp4), así puede rehacer los cambios sin perder calidad.
+const editando = new Set();          // clips que se están editando ahora mismo
+
+app.post('/api/editar/:id/:n', requiereLogin, U.limitador(40, 10 * 60 * 1000), async (req, res) => {
+  const n = parseInt(req.params.n, 10);
+  const clip = clipDe(req.usuario.id, req.params.id, n);
+  if (!clip) return res.status(404).json({ error: 'Ese clip ya expiró. Crea los clips otra vez.' });
+  const t = trabajos.get(req.params.id);
+  const meta = t.clips.find(c => c.n === n);
+  const clave = `${t.id}.${n}`;
+  if (editando.has(clave)) return res.status(409).json({ error: 'Este clip ya se está editando. Espera unos segundos.' });
+  editando.add(clave);
+  const salida = path.join(t.dir, `clip_${n}.edit.mp4`);
+  try {
+    const orig = path.join(t.dir, `clip_${n}.orig.mp4`);
+    if (!fs.existsSync(orig)) fs.copyFileSync(clip.archivo, orig);      // guardamos el original la primera vez
+    const info = await K.sondear(orig);
+    const pedido = E.limpiarPedido(req.body, info.duracion);
+
+    // Pasa por la misma fila que los cortes, para no saturar el servidor
+    const duracion = await new Promise((resolve, reject) => {
+      const idTrabajo = 'ed_' + crypto.randomBytes(6).toString('hex');
+      const aceptado = cola.agregar({
+        id: idTrabajo, userId: req.usuario.id,
+        correr: () => E.renderizar({ original: orig, salida, pedido, dir: t.dir, n }).then(resolve, reject),
+      });
+      if (!aceptado) reject(new Error('OCUPADO'));
+    });
+
+    fs.renameSync(salida, clip.archivo);                                 // el clip editado reemplaza al anterior
+    meta.duracion = Math.round(duracion * 10) / 10;
+    meta.v = (meta.v || 0) + 1;                                          // para que el navegador no use la copia vieja
+    meta.editado = true;
+    meta.ajustes = { recorte: pedido.recorte, velocidad: pedido.velocidad, volumen: pedido.volumen,
+      textos: pedido.lineas.filter(l => !l.subtitulo), subtitulos: pedido.lineas.filter(l => l.subtitulo) };
+    res.json({ ok: true, clip: meta });
+  } catch (e) {
+    fs.rm(salida, () => {});
+    if (e.message === 'OCUPADO') return res.status(503).json({ error: 'El servidor está muy ocupado. Intenta en unos minutos.' });
+    console.error('[editor]', String(e.message).slice(-300));
+    const claro = /tipografía/.test(e.message) ? e.message : 'No se pudo aplicar la edición. Revisa los tiempos y el texto e inténtalo de nuevo.';
+    res.status(500).json({ error: claro });
+  } finally {
+    editando.delete(clave);
+  }
+});
+
+// Volver al clip original (deshacer todas las ediciones)
+app.post('/api/editar/:id/:n/restaurar', requiereLogin, async (req, res) => {
+  const n = parseInt(req.params.n, 10);
+  const clip = clipDe(req.usuario.id, req.params.id, n);
+  if (!clip) return res.status(404).json({ error: 'Ese clip ya expiró.' });
+  const t = trabajos.get(req.params.id);
+  const meta = t.clips.find(c => c.n === n);
+  const orig = path.join(t.dir, `clip_${n}.orig.mp4`);
+  if (!fs.existsSync(orig)) return res.json({ ok: true, clip: meta });   // nunca se editó
+  try {
+    fs.copyFileSync(orig, clip.archivo);
+    const info = await K.sondear(orig);
+    meta.duracion = Math.round(info.duracion * 10) / 10;
+    meta.v = (meta.v || 0) + 1; meta.editado = false; delete meta.ajustes;
+    res.json({ ok: true, clip: meta });
+  } catch (e) {
+    console.error('[editor]', e.message);
+    res.status(500).json({ error: 'No se pudo volver al original.' });
+  }
 });
 
 // Descargar TODOS los clips en un .zip

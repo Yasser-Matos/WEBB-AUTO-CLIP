@@ -4,6 +4,6 @@
     "yt-dlp": "latest"
   },
   "deploy": {
-    "aptPackages": ["...", "ffmpeg"]
+    "aptPackages": ["...", "ffmpeg", "fonts-dejavu-core"]
   }
 }

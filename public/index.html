@@ -254,6 +254,69 @@
   </form>
 </dialog>
 
+
+<!-- Editor de clips -->
+<dialog id="dlgEditor" class="editor" aria-labelledby="tituloEditor">
+  <div class="ed-cab">
+    <h2 id="tituloEditor">Editar clip</h2>
+    <button type="button" id="edCerrar" class="sec peq">Cerrar</button>
+  </div>
+  <div class="ed-cuerpo">
+    <div class="ed-vista">
+      <div class="ed-marco" id="edMarco">
+        <video id="edVideo" controls playsinline preload="metadata"></video>
+        <div id="edCapa" class="ed-capa" aria-hidden="true"></div>
+      </div>
+      <small>Vista previa aproximada. El resultado final se ve al aplicar los cambios.</small>
+    </div>
+
+    <div class="ed-controles">
+      <section class="ed-bloque">
+        <h3>Recortar</h3>
+        <div class="fila">
+          <div><label for="edDesde">Empieza en (s)</label><input type="number" id="edDesde" min="0" step="0.1" inputmode="decimal"></div>
+          <div><label for="edHasta">Termina en (s)</label><input type="number" id="edHasta" min="0" step="0.1" inputmode="decimal"></div>
+        </div>
+        <div class="ed-botones">
+          <button type="button" id="edMarcarIni" class="sec peq">Empezar aquí</button>
+          <button type="button" id="edMarcarFin" class="sec peq">Terminar aquí</button>
+        </div>
+        <small>Pausa la vista previa donde quieras y pulsa el botón. El clip final dura <b id="edDurFinal">-</b>.</small>
+      </section>
+
+      <section class="ed-bloque">
+        <h3>Velocidad</h3>
+        <div class="ed-vel" id="edVel"></div>
+      </section>
+
+      <section class="ed-bloque">
+        <h3>Sonido</h3>
+        <label for="edVolumen">Volumen: <b id="edVolumenTxt">100 %</b></label>
+        <input type="range" id="edVolumen" min="0" max="200" step="5" value="100">
+        <div class="ed-botones"><button type="button" id="edSilenciar" class="sec peq">Quitar el sonido</button></div>
+      </section>
+
+      <section class="ed-bloque">
+        <h3>Texto sobre el video</h3>
+        <div id="edTextos"></div>
+        <button type="button" id="edAgregarTexto" class="sec peq">+ Agregar texto</button>
+      </section>
+
+      <section class="ed-bloque">
+        <h3>Subtítulos</h3>
+        <small>Escribe cada frase y el momento en que aparece (segundos del clip ya editado).</small>
+        <div id="edSubs"></div>
+        <button type="button" id="edAgregarSub" class="sec peq">+ Agregar subtítulo</button>
+      </section>
+    </div>
+  </div>
+  <p id="edMsg" class="msg" role="status"></p>
+  <div class="ed-pie">
+    <button type="button" id="edRestaurar" class="sec">Volver al original</button>
+    <button type="button" id="edAplicar">Aplicar cambios</button>
+  </div>
+</dialog>
+
 <script src="/app.js"></script>
 </body>
 </html>

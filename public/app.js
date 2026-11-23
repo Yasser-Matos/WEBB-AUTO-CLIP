@@ -443,12 +443,19 @@ function mostrarClips(t) {
   $('btnZip').classList.toggle('oculto', t.clips.length < 2);
   est.finEn = Date.now() + (t.expiraEn || 0) * 1000;
   iniciarCuenta();
+  est.clips = t.clips;
+  pintarLista();
+  cont.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
+// Dibuja (o vuelve a dibujar) la lista de clips. Se llama otra vez después de editar un clip.
+function pintarLista() {
   const puedePublicar = est.yo.plan.publicar && est.redes.length > 0;
   const lista = $('listaClips');
   lista.replaceChildren();
-  t.clips.forEach(c => {
-    const url = `/api/clip/${est.trabajo}/${c.n}`;
+  est.clips.forEach(c => {
+    const base = `/api/clip/${est.trabajo}/${c.n}`;
+    const url = `${base}?v=${c.v || 0}`;          // el "v" evita que el navegador muestre la copia vieja
     const botonPublicar = puedePublicar
       ? el('button', { type: 'button', class: 'sec', text: '🚀 Publicar', onclick: () => abrirPublicar(c.n) })
       : null;
@@ -456,14 +463,14 @@ function mostrarClips(t) {
       el('video', { src: url, controls: true, preload: 'metadata', playsinline: true }),
       el('div', { class: 'datos' },
         el('b', { text: `Clip ${c.n}` }), el('br'),
-        el('small', { text: `${c.duracion} s · desde ${formatoTiempo(c.inicio)}` }),
+        el('small', { text: `${c.duracion} s · desde ${formatoTiempo(c.inicio)}${c.editado ? ' · editado' : ''}` }),
         el('div', { class: 'acciones' },
-          el('a', { class: 'boton', href: `${url}?descargar=1`, text: '⬇️ MP4' }),
+          el('button', { type: 'button', text: '✏️ Editar', onclick: () => abrirEditor(c.n) }),
+          el('a', { class: 'boton', href: `${base}?descargar=1&v=${c.v || 0}`, text: '⬇️ MP4' }),
           el('button', { type: 'button', class: 'sec', text: '📤 Compartir', onclick: ev => compartir(url, c.n, ev.currentTarget) }),
           botonPublicar,
         ))));
   });
-  cont.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function iniciarCuenta() {
@@ -591,5 +598,231 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
     if (m) { avisar(m[0], m[1]); history.replaceState(null, '', location.pathname); break; }
   }
 })();
+
+
+// ======================================================================
+//  EDITOR DE CLIPS (texto, recorte, velocidad, sonido, subtítulos)
+//  Los cambios se aplican en el servidor con ffmpeg; aquí solo se arma
+//  el formulario y una vista previa aproximada.
+// ======================================================================
+const ED_TAMANOS = { chico: 0.03, medio: 0.045, grande: 0.065 };      // igual que editor.js del servidor
+const ED_COLORES = { blanco: '#ffffff', amarillo: '#ffe600', rojo: '#ff3b3b', verde: '#35e04a', celeste: '#27d9ff', naranja: '#ff9d1f', negro: '#000000' };
+const ED_VELOCIDADES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const ED_MAX_LINEAS = 20;
+
+const ed = { n: null, clip: null, textos: [], subs: [], vel: 1, ocupado: false };
+
+const edNum = v => { const x = parseFloat(v); return Number.isFinite(x) ? x : null; };
+const edDuracionOrig = () => $('edVideo').duration || (ed.clip ? ed.clip.duracion : 0) || 0;
+// Duración del clip ya editado (con recorte y velocidad)
+function edDurFinal() {
+  const d = edNum($('edDesde').value) ?? 0, h = edNum($('edHasta').value) ?? edDuracionOrig();
+  return Math.max(0, (h - d) / ed.vel);
+}
+
+function abrirEditor(n) {
+  const c = est.clips.find(x => x.n === n);
+  if (!c) return;
+  ed.n = n; ed.clip = c;
+  const aj = c.ajustes || {};
+  ed.vel = aj.velocidad || 1;
+  ed.textos = (aj.textos || []).map(t => ({ texto: t.texto, pos: t.pos, tam: t.tam, color: t.color, fondo: !!t.fondo, desde: t.desde, hasta: t.hasta }));
+  ed.subs = (aj.subtitulos || []).map(t => ({ texto: t.texto, desde: t.desde, hasta: t.hasta }));
+  $('tituloEditor').textContent = `Editar clip ${n}`;
+  $('edMsg').textContent = ''; $('edMsg').className = 'msg';
+  $('edDesde').value = aj.recorte ? aj.recorte.desde : 0;
+  $('edHasta').value = aj.recorte ? aj.recorte.hasta : c.duracion;
+  $('edVolumen').value = aj.volumen != null ? aj.volumen : 100;
+  const v = $('edVideo');
+  // Vista previa con el clip ORIGINAL (sin editar): así se puede recortar y cambiar todo de nuevo
+  v.src = `/api/clip/${est.trabajo}/${n}?original=1&v=${c.v || 0}`;
+  v.onloadedmetadata = () => {
+    if (!aj.recorte) $('edHasta').value = Math.round(v.duration * 10) / 10;
+    edActualizar();
+  };
+  pintarVelocidades(); pintarTextos(); pintarSubs();
+  edActualizar();
+  $('dlgEditor').showModal();
+}
+
+function cerrarEditor() {
+  const v = $('edVideo');
+  v.pause(); v.removeAttribute('src'); v.load();
+  $('dlgEditor').close();
+}
+$('edCerrar').onclick = cerrarEditor;
+
+// ---------- Velocidad ----------
+function pintarVelocidades() {
+  $('edVel').replaceChildren(...ED_VELOCIDADES.map(x => el('button', {
+    type: 'button', class: x === ed.vel ? 'on' : '', text: x + '×',
+    onclick: () => { ed.vel = x; pintarVelocidades(); edActualizar(); },
+  })));
+}
+
+// ---------- Sonido ----------
+$('edVolumen').oninput = edActualizar;
+$('edSilenciar').onclick = () => { $('edVolumen').value = $('edVolumen').value === '0' ? 100 : 0; edActualizar(); };
+
+// ---------- Recorte ----------
+$('edDesde').oninput = $('edHasta').oninput = edActualizar;
+$('edMarcarIni').onclick = () => { $('edDesde').value = Math.round($('edVideo').currentTime * 10) / 10; edActualizar(); };
+$('edMarcarFin').onclick = () => { $('edHasta').value = Math.round($('edVideo').currentTime * 10) / 10; edActualizar(); };
+
+// ---------- Textos ----------
+function selectDe(opciones, valor, alCambiar) {
+  const s = el('select', {}, ...opciones.map(([v, t]) => el('option', { value: v, text: t })));
+  s.value = valor; s.onchange = () => alCambiar(s.value);
+  return s;
+}
+const campoTiempo = (valor, ph, alCambiar) => {
+  const i = el('input', { type: 'number', min: '0', step: '0.1', inputmode: 'decimal', placeholder: ph });
+  i.value = valor == null ? '' : valor;
+  i.oninput = () => alCambiar(i.value === '' ? null : edNum(i.value));
+  return i;
+};
+
+function pintarTextos() {
+  const cont = $('edTextos');
+  cont.replaceChildren(...ed.textos.map((t, i) => {
+    const area = el('textarea', { rows: '2', maxlength: '200', placeholder: 'Escribe tu texto aquí' });
+    area.value = t.texto; area.oninput = () => { t.texto = area.value; edActualizar(); };
+    const fondo = el('input', { type: 'checkbox' });
+    fondo.checked = t.fondo; fondo.onchange = () => { t.fondo = fondo.checked; edActualizar(); };
+    return el('div', { class: 'ed-item' },
+      area,
+      el('div', { class: 'ed-fila3' },
+        selectDe([['arriba', 'Arriba'], ['centro', 'Centro'], ['abajo', 'Abajo']], t.pos, v => { t.pos = v; edActualizar(); }),
+        selectDe([['chico', 'Letra chica'], ['medio', 'Letra media'], ['grande', 'Letra grande']], t.tam, v => { t.tam = v; edActualizar(); }),
+        selectDe([['blanco', 'Blanco'], ['amarillo', 'Amarillo'], ['rojo', 'Rojo'], ['verde', 'Verde'], ['celeste', 'Celeste'], ['naranja', 'Naranja'], ['negro', 'Negro']], t.color, v => { t.color = v; edActualizar(); }),
+      ),
+      el('label', { class: 'ed-check' }, fondo, ' Fondo oscuro detrás del texto'),
+      el('div', { class: 'ed-fila2' },
+        campoTiempo(t.desde, 'Desde (s)', v => { t.desde = v; edActualizar(); }),
+        campoTiempo(t.hasta, 'Hasta (s)', v => { t.hasta = v; edActualizar(); }),
+      ),
+      el('small', { text: 'Si dejas los tiempos vacíos, el texto se ve en todo el clip.' }),
+      el('button', { type: 'button', class: 'sec peq', text: 'Quitar este texto', onclick: () => { ed.textos.splice(i, 1); pintarTextos(); edActualizar(); } }),
+    );
+  }));
+}
+$('edAgregarTexto').onclick = () => {
+  if (ed.textos.length + ed.subs.length >= ED_MAX_LINEAS) return avisar(`Máximo ${ED_MAX_LINEAS} textos y subtítulos por clip.`, 'error');
+  ed.textos.push({ texto: '', pos: 'abajo', tam: 'medio', color: 'blanco', fondo: true, desde: null, hasta: null });
+  pintarTextos();
+};
+
+// ---------- Subtítulos ----------
+// Momento actual de la vista previa, ya contado en el clip editado (con recorte y velocidad)
+function edMomentoActual() {
+  const d = edNum($('edDesde').value) ?? 0;
+  return Math.max(0, Math.round((($('edVideo').currentTime - d) / ed.vel) * 10) / 10);
+}
+function pintarSubs() {
+  const cont = $('edSubs');
+  cont.replaceChildren(...ed.subs.map((t, i) => {
+    const txt = el('input', { type: 'text', maxlength: '200', placeholder: 'Frase del subtítulo' });
+    txt.value = t.texto; txt.oninput = () => { t.texto = txt.value; edActualizar(); };
+    const desde = campoTiempo(t.desde, 'Desde (s)', v => { t.desde = v; edActualizar(); });
+    const hasta = campoTiempo(t.hasta, 'Hasta (s)', v => { t.hasta = v; edActualizar(); });
+    return el('div', { class: 'ed-item' },
+      txt,
+      el('div', { class: 'ed-fila2' }, desde, hasta),
+      el('div', { class: 'ed-botones' },
+        el('button', { type: 'button', class: 'sec peq', text: 'Empieza aquí', onclick: () => { t.desde = edMomentoActual(); desde.value = t.desde; edActualizar(); } }),
+        el('button', { type: 'button', class: 'sec peq', text: 'Termina aquí', onclick: () => { t.hasta = edMomentoActual(); hasta.value = t.hasta; edActualizar(); } }),
+        el('button', { type: 'button', class: 'sec peq', text: 'Quitar', onclick: () => { ed.subs.splice(i, 1); pintarSubs(); edActualizar(); } }),
+      ));
+  }));
+}
+$('edAgregarSub').onclick = () => {
+  if (ed.textos.length + ed.subs.length >= ED_MAX_LINEAS) return avisar(`Máximo ${ED_MAX_LINEAS} textos y subtítulos por clip.`, 'error');
+  const previo = ed.subs[ed.subs.length - 1];
+  const ini = previo && previo.hasta != null ? previo.hasta : edMomentoActual();
+  ed.subs.push({ texto: '', desde: ini, hasta: Math.round((ini + 2) * 10) / 10 });
+  pintarSubs();
+};
+
+// ---------- Vista previa ----------
+// Dibuja encima del video los textos que tocan en este instante
+function edPintarCapa() {
+  const capa = $('edCapa'), marco = $('edMarco');
+  const alto = marco.clientHeight || 400;
+  const d = edNum($('edDesde').value) ?? 0;
+  const tf = ($('edVideo').currentTime - d) / ed.vel;          // segundo dentro del clip ya editado
+  const lineas = [
+    ...ed.textos.map(t => ({ ...t, sub: false })),
+    ...ed.subs.map(t => ({ texto: t.texto, pos: 'abajo', tam: 'medio', color: 'blanco', fondo: true, desde: t.desde, hasta: t.hasta, sub: true })),
+  ].filter(l => l.texto && l.texto.trim() &&
+    (l.desde == null || tf >= l.desde) && (l.hasta == null || tf <= l.hasta));
+  capa.replaceChildren(...lineas.map(l => el('div', {
+    class: 'ed-linea ed-' + l.pos + (l.sub ? ' ed-sub' : ''),
+    text: l.texto,
+    style: `font-size:${Math.round(alto * ED_TAMANOS[l.tam])}px;color:${ED_COLORES[l.color]};` +
+      (l.fondo ? 'background:rgba(0,0,0,.6);padding:.25em .45em;border-radius:4px;' : 'text-shadow:0 0 3px #000,0 0 3px #000,0 0 3px #000;'),
+  })));
+}
+
+// Pone al día todo lo que depende de los controles
+function edActualizar() {
+  const v = $('edVideo');
+  const vol = parseInt($('edVolumen').value, 10);
+  $('edVolumenTxt').textContent = vol === 0 ? 'sin sonido' : vol + ' %';
+  $('edSilenciar').textContent = vol === 0 ? 'Poner el sonido' : 'Quitar el sonido';
+  v.playbackRate = ed.vel;
+  v.volume = Math.min(1, vol / 100); v.muted = vol === 0;
+  const dur = edDurFinal();
+  $('edDurFinal').textContent = dur > 0 ? `${dur.toFixed(1)} s` : '-';
+  edPintarCapa();
+}
+// La vista previa se queda dentro del tramo recortado
+$('edVideo').addEventListener('timeupdate', () => {
+  const v = $('edVideo');
+  const d = edNum($('edDesde').value) ?? 0, h = edNum($('edHasta').value) ?? v.duration;
+  if (!v.paused && v.currentTime >= h) { v.pause(); v.currentTime = d; }
+  edPintarCapa();
+});
+$('edVideo').addEventListener('play', () => {
+  const v = $('edVideo');
+  const d = edNum($('edDesde').value) ?? 0, h = edNum($('edHasta').value) ?? v.duration;
+  if (v.currentTime < d || v.currentTime >= h) v.currentTime = d;
+  v.playbackRate = ed.vel;
+});
+$('edVideo').addEventListener('seeked', edPintarCapa);
+
+// ---------- Aplicar y volver al original ----------
+function edMensaje(texto, tipo) { $('edMsg').textContent = texto; $('edMsg').className = 'msg' + (tipo ? ' ' + tipo : ''); }
+function edBloquear(si) { ed.ocupado = si; $('edAplicar').disabled = si; $('edRestaurar').disabled = si; $('edCerrar').disabled = si; }
+
+function edPedido() {
+  const volumen = parseInt($('edVolumen').value, 10);
+  return {
+    recorte: { desde: edNum($('edDesde').value) ?? 0, hasta: edNum($('edHasta').value) ?? edDuracionOrig() },
+    velocidad: ed.vel, volumen,
+    textos: ed.textos.filter(t => t.texto.trim()),
+    subtitulos: ed.subs.filter(t => t.texto.trim()),
+  };
+}
+
+async function edEnviar(url, cuerpo, mensajeEspera, mensajeOk) {
+  if (ed.ocupado) return;
+  edBloquear(true); edMensaje(mensajeEspera, '');
+  const r = await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo || {}) });
+  edBloquear(false);
+  if (!r.ok) return edMensaje(r.datos.error || 'No se pudo editar el clip. Intenta de nuevo.', 'error');
+  const i = est.clips.findIndex(x => x.n === ed.n);
+  if (i >= 0) est.clips[i] = r.datos.clip;
+  pintarLista();
+  cerrarEditor();
+  avisar(mensajeOk, 'ok');
+}
+
+$('edAplicar').onclick = () => {
+  if (edDurFinal() < 1) return edMensaje('El clip debe durar al menos 1 segundo. Revisa "Empieza en" y "Termina en".', 'error');
+  edEnviar(`/api/editar/${est.trabajo}/${ed.n}`, edPedido(), 'Aplicando los cambios... puede tardar unos segundos.', '✅ Clip editado. Ya puedes descargarlo.');
+};
+$('edRestaurar').onclick = () =>
+  edEnviar(`/api/editar/${est.trabajo}/${ed.n}/restaurar`, {}, 'Volviendo al original...', 'El clip volvió a su versión original.');
+$('dlgEditor').addEventListener('cancel', e => { if (ed.ocupado) e.preventDefault(); });
 
 iniciar();
