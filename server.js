@@ -1,3 +1,21 @@
+// =====================================================================
+// VIDEOCLIPS - Servidor (Node.js + Express)
+// Todo el proyecto usa UN solo lenguaje: JavaScript.
+//
+// Archivos del proyecto:
+//   config.js    -> precios, planes y límites (aquí cambias números)
+//   db.js        -> base de datos (usuarios, pagos, redes)
+//   cortador.js  -> decide dónde y cómo se corta cada clip
+//   analisis.js  -> encuentra los "mejores momentos" del video
+//   cola.js      -> fila de espera cuando hay muchos videos a la vez
+//   pagos.js     -> cobro automático con Stripe y PayPal
+//   redes.js     -> publicar directo en YouTube, TikTok e Instagram
+//   panel.js     -> panel de administración (/admin)
+//   zip.js       -> descargar todos los clips en un solo archivo
+//   public/      -> la página que ve el usuario
+//
+// NADA se guarda: el video original se borra al terminar y los clips a los 20 min.
+// =====================================================================
 
 const express = require('express');
 const cookieParser = require('cookie-parser');
@@ -237,6 +255,8 @@ function mensajeErrorDescarga(texto) {
   if (/^LIVE_SIN_TRAMO:vivo/.test(t)) return 'Ese link es un live EN VIVO. Marca de dónde a dónde quieres cortar en "Desde" y "Hasta" (por ejemplo 10:00 a 15:00, contando desde que empezó el live) y vuelve a intentarlo.';
   if (/^LIVE_SIN_TRAMO/.test(t)) return 'Ese link es un live (puede durar horas). Marca de dónde a dónde quieres cortar en "Desde" y "Hasta" (por ejemplo 1:20:00 a 1:35:00) y vuelve a intentarlo.';
   if (/^LIVE_TRAMO_LARGO/.test(t)) return 'En un live el tramo puede ser de máximo ' + (LIVE_MAX_SEG / 60) + ' minutos. Acorta el "Desde" y "Hasta".';
+  if (/sign in to confirm|not a bot|cookies-from-browser|--cookies/i.test(t) && (process.env.YTDLP_PROXY || process.env.YTDLP_COOKIES_B64))
+    return 'YouTube siguió bloqueando la descarga incluso con el proxy o las cookies. Sube el archivo del video por ahora; el administrador debe revisar el proxy y renovar las cookies.';
   if (/sign in to confirm|not a bot|cookies-from-browser|--cookies/i.test(t))
     return 'Ese sitio no deja descargar el video desde nuestro servidor (pasa mucho con YouTube). Sube el archivo del video, o prueba con otro link.';
   if (/private video|members-only|this video is private/i.test(t))
@@ -292,15 +312,27 @@ async function procesar(t, o) {
       }
 
       t.mensaje = tramoLive ? 'Es un live: descargando solo el tramo que marcaste...' : 'Descargando el video del link...';
-      await U.ejecutar('yt-dlp', [
+      // Con proxy de pago se cobra por GB: bajamos a 720p para gastar menos (cámbialo con YTDLP_ALTURA_MAX)
+      const alturaMax = parseInt(process.env.YTDLP_ALTURA_MAX, 10) || (process.env.YTDLP_PROXY ? 720 : 1080);
+      const armarArgs = (clientesYoutube) => [
         '--no-playlist', '--no-warnings', '--max-filesize', '1G', '--socket-timeout', '30',
         ...opcionesDescargaExtra(),
+        ...(clientesYoutube ? ['--extractor-args', 'youtube:player_client=' + clientesYoutube] : []),
         // Live: solo el tramo marcado ("*desde-hasta" en segundos). Si sigue en directo, desde el inicio.
         ...(tramoLive ? ['--download-sections', `*${tramoLive.desde}-${tramoLive.hasta}`] : []),
         ...(tramoLive && tramoLive.enVivo ? ['--live-from-start'] : []),
-        '-f', 'bv*[height<=1080]+ba/b[height<=1080]/b', '--merge-output-format', 'mp4',
+        '-f', `bv*[height<=${alturaMax}]+ba/b[height<=${alturaMax}]/b`, '--merge-output-format', 'mp4',
         '-o', path.join(t.dir, 'origen.%(ext)s'), '--', o.link,
-      ], { timeoutMs: 10 * 60 * 1000 });
+      ];
+      try {
+        await U.ejecutar('yt-dlp', armarArgs(null), { timeoutMs: 10 * 60 * 1000 });
+      } catch (e1) {
+        // Si YouTube pidió "confirmar que no eres un bot", reintentamos una vez con otra forma de pedirlo
+        if (!/sign in to confirm|not a bot/i.test(String(e1.message))) throw e1;
+        console.error('[descarga] 1er intento bloqueado, reintentando con otros clientes de YouTube');
+        t.mensaje = 'Reintentando la descarga...';
+        await U.ejecutar('yt-dlp', armarArgs('tv,web_safari'), { timeoutMs: 10 * 60 * 1000 });
+      }
       const f = fs.readdirSync(t.dir).find(n => n.startsWith('origen.') && !/\.(part|ytdl)$/.test(n));
       if (!f) throw new Error('No se pudo descargar el video de ese link');
       origen = path.join(t.dir, f);
